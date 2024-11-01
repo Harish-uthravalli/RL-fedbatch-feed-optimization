@@ -7,10 +7,11 @@ from csv import writer
 import config
 import random
 from scipy.interpolate import CubicSpline
+import utils
 
 class Reactor(gymnasium.Env):
 
-    def __init__(self):
+    def __init__(self, experiment_name=None):
         # Observation Space
         # time, enzymes, cells, substrate, substrate/cells
         self.observation_space  = spaces.Box(low=np.array([0,0]), high = np.array([math.inf, math.inf]), dtype=np.float64)
@@ -21,10 +22,12 @@ class Reactor(gymnasium.Env):
         #self.action_space = spaces.Discrete(2)
         #self.action_space = spaces.Box(low = np.array([0,0]), high=np.array([2,1]), dtype=np.int32) 
         #self.action_space = spaces.MultiDiscrete(nvec=[3, 2], start=[-1 , 0], dtype=np.int16)
-
+        
+        self.experiment_name = experiment_name
+        
         # CSV File
         self.df = pd.DataFrame(columns=config.TRAINING_DATA_LOG_COLUMNS)
-        self.df.to_csv(config.TRAINING_DATA_LOGS_FILENAME, index=True)  
+        self.df.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", index=True)  
 
         self.experiment_number = config.EXPERIMENT_NUMBER
 
@@ -35,8 +38,6 @@ class Reactor(gymnasium.Env):
         # Create a cubic spline interpolation model
         self.cs = CubicSpline(self.xvalues, self.y_values)
 
-        with open("highest_slope.txt", 'w') as file:
-            file.write('0')
 
     def reset(self, seed=None, options=None):        
         # We need the following line to seed self.np_random
@@ -133,51 +134,18 @@ class Reactor(gymnasium.Env):
         self.current_e_activ = 0.0
         self.before_e_activ =  self.E0
 
-
         # Clear contents of plotting file
-        with open("plot.txt",'w') as f:
+        with open(f"experiments/{self.experiment_name}/plot.txt",'w') as f:
             f.truncate(0)
             f.close()
 
-        
         # return : Observation, information
         # time, enzymes
         return np.array([
             self.simulation_timestep, 
             self.enzyme_activity[self.simulation_timestep]
             ]),{}
-    
 
-    def monod(self, S, Ks=config.KS):
-        return config.MU_MAX * (S/(Ks + S))
-    
-    def cell_production_rate(self, sub_conc, R_max=0.20, S_0=0.004, k=2000):
-        """
-        Calculate the rate of cell production based on a sigmoid curve.
-
-        Parameters:
-        sub_conc (float): Substrate concentration (mol/L).
-        R_max (float): Maximum rate of cell production (default is 0.20).
-        S_0 (float): Midpoint substrate concentration, where rate is half of R_max (default is 0.025 mol/L).
-        k (float): Steepness of the curve. A higher value makes the curve steeper (default is 50).
-
-        Returns:
-        float: Rate of cell production.
-        """
-        # Sigmoid curve formula for rate of cell production
-        rate = R_max / (1 + np.exp(-k * (sub_conc - S_0)))
-        return rate
-    
-    def logistic(self, substrate, L=config.MU_MAX, k=2000, t0=0.04):
-        """
-        Logistic function for cell production rate where:
-        - substrate: input concentration (mol/L)
-        - L: maximum production rate (0.20 in this case)
-        - k: steepness of the curve (adjust for desired fall-off)
-        - t0: midpoint concentration (adjust to match the substrate range)
-        """
-        return L * (1 - (1 / (1 + np.exp(-k * (substrate - t0)))))
-    
 
     def step(self, action):
         while True:
@@ -186,118 +154,83 @@ class Reactor(gymnasium.Env):
             #                                   Simluation 
             #---------------------------------------------------------------------------------------#
             if self.step_called:
-                # Perform an action on temperature
-                #temp_action = action[0]
-                # Perform an action on substrate
-                #substrate_action = action 
-                substrate_action = action
-                #print("substrate action taken ",substrate_action)
+                # Get the action from RL 
+                substrate_action = action[0]
                 self.feeding_action[self.simulation_timestep] = substrate_action
-                enzyme_initial_cordinates = [self.simulation_timestep, self.enzyme_activity[self.simulation_timestep]]    
-                cells_x1_y1 = [self.simulation_timestep, self.biomass[self.simulation_timestep]]
-                # if temp_action == 1:
-                #     self.T += config.TEMP_CHANGE
-                # elif temp_action == 2:
-                #     self.T -= config.TEMP_CHANGE
-                # self.temperature[self.simulation_timestep] = self.T
-           # print("Substrate Concentration: ", self.substrate[self.simulation_timestep])
-            # Specific Growth Rate of biomass growth 
             
-            
-            #MuX =  self.mu_max * (math.exp(-((config.OPTIMUM_TEMPERATURE - config.OPTIMUM_TEMPERATURE)**2)/config.OPT_TEMP_RANGE**2))
-
-            if self.substrate[self.simulation_timestep] < 0.002 or self.substrate[self.simulation_timestep] > 0.03:
-                MuX = 0
-            else:
-                MuX = 0.2
-
-            # if self.substrate[self.simulation_timestep] < 0.030 and self.substrate[self.simulation_timestep] >= 0.0010:
-            #     MuX = self.cell_production_rate(self.substrate[self.simulation_timestep])
-            # elif self.substrate[self.simulation_timestep] < 0.001:
-            #     MuX = 0
-            # elif self.substrate[self.simulation_timestep] >= 0.030 and self.substrate[self.simulation_timestep] <= 0.0425:
-            #     MuX = self.logistic(self.substrate[self.simulation_timestep], L=self.mu_max)
-            # elif self.substrate[self.simulation_timestep] > 0.0425:
-            #     MuX = 0
-
+            # =========================== Cell Production ===========================
+            # Rate of cell production based on substrate
+            MuX = utils.cell_growth_rate(self.substrate[self.simulation_timestep])
             # Cells produced
-            dXdt = MuX * self.biomass[self.simulation_timestep]
-            # Substrate consumed
-            dSdt = -(1/self.Yxs) * dXdt
+            dXdt = utils.cells_produced(self.biomass[self.simulation_timestep], MuX)
+            # =======================================================================
 
-            # Change in cells and substrate using Euler
-            delX = dXdt * self.del_t 
-            delS = dSdt * self.del_t # mol/L
+            # =========================== Substrate Consumption ===========================
+            dSdt = utils.substrate_consumed(dXdt)
+            # =============================================================================
 
-            # Update cells for next timestep
-            
+            # =========================== Update Cell Concentration ===========================
+            # Change in cells 
+            delX = dXdt * self.del_t
+            # Update cell concentration
             self.biomass[self.simulation_timestep + 1] = self.biomass[self.simulation_timestep] + delX
-            
-            # Update substrate
-            if self.step_called:
-                if self.substrate_in_tank_liters < self.max_substrate_limit_liters:
-                    if substrate_action:
-                        # if self.simulation_timestep == 0 or self.simulation_timestep == 1:
-                        #     print("Substrate added")
-                        self.tank_is_full = False
-                        cur_sub_conc = self.substrate[self.simulation_timestep]
-                        self.sub_in_tank_moles = cur_sub_conc * self.substrate_in_tank_liters
-                        # Adjust the substrate concentration based on the continuous flow volume action
-                        #self.substrate_in_tank_liters += self.substrate_transfer_amount_liters
-                        self.substrate_in_tank_liters += substrate_action
-                        #self.sub_in_tank_moles += self.substrate_transfer_amount_liters * self.ext_tank_substrate_conc
-                        self.sub_in_tank_moles += substrate_action * self.ext_tank_substrate_conc
-                        substrate_concentration = self.sub_in_tank_moles / self.substrate_in_tank_liters
-                        self.substrate[self.simulation_timestep] = substrate_concentration  
-                        #print("Substrate Concentration Change: ", self.substrate[self.simulation_timestep])
-                    # else:
-                    #     if self.simulation_timestep == 0 or self.simulation_timestep == 1:
-                    #         print("substrate not added")
-                else:
-                    self.tank_is_full = True
+            # =============================================================================
 
-                self.step_called = False
-            
-            # Updating Substrate consumption
-            if (self.substrate[self.simulation_timestep] + delS) < 0.000001:
-                self.substrate[self.simulation_timestep+1] = 0
-            else:
-                self.substrate[self.simulation_timestep+1] = self.substrate[self.simulation_timestep] + delS
-
-            # Cells start dying if no substrate for more than x hours
-            if self.substrate[self.simulation_timestep+1] == 0:
+            # =========================== Check no change in cell concentration =========================== 
+            if dXdt == 0:
                 self.cell_death_timer += 1
             else:
                 self.cell_death_timer = 0
-
-            # # if cell_death_timer == 2 hours then cells start dying
-            # if int(self.cell_death_timer) >= int(self.cell_death_hour/self.del_t):
-            #     self.biomass[self.simulation_timestep+1] = self.biomass[self.simulation_timestep+1] - (self.biomass[self.simulation_timestep+1]*self.cell_death_rate)
-                
-            # Enzyme determination 
-            #print(f"substrate in tank: {self.substrate[self.simulation_timestep]} and cells in tank: {self.biomass[self.simulation_timestep]} at timestep: {self.simulation_timestep}")
-            sub_cell_ratio = self.substrate[self.simulation_timestep]/self.biomass[self.simulation_timestep]
-            sub_cell_ratio = sub_cell_ratio * 1e6
-            if sub_cell_ratio > 11000:
-                MuE = 0
-            else:
-                MuE = self.MuE_opt * self.cs(sub_cell_ratio)
-
-            # if self.simulation_timestep == 0 or self.simulation_timestep == 1:
-            #     print(f"Timestep : {self.simulation_timestep} S_C_R: {sub_cell_ratio}")
+            # =================================================================================
+        
+            # =========================== Substrate Addition ===========================
+            # Update substrate
+            if self.step_called:
+                # check tank is full
+                if self.substrate_in_tank_liters < self.max_substrate_limit_liters:
+                    # Add substrate
+                    self.substrate[self.simulation_timestep], self.substrate_in_tank_liters = utils.add_substrate(self.substrate[self.simulation_timestep], substrate_action, self.substrate_in_tank_liters)
+                # Tank is full
+                else:
+                    self.tank_is_full = True
+                # Make step False till new action is taken
+                self.step_called = False
             
-            # new enzyme from fresh cells
+            # Calculate change in substrate
+            delS = dSdt * self.del_t
+            # Update Substrate concentration
+            # Check if substrate is less than or close to 0
+            if self.substrate[self.simulation_timestep] + delS < 0.000001:
+                self.substrate[self.simulation_timestep + 1] = 0
+            else:
+                self.substrate[self.simulation_timestep + 1] = self.substrate[self.simulation_timestep] + delS
+            # =======================================================================
+
+
+            # =========================== Enzyme Production ===========================
+            # Enzyme determination 
+            sub_cell_ratio = ( self.substrate[self.simulation_timestep] / self.biomass[self.simulation_timestep] ) * 1e6
+            # Check if any cells were produced in this timestep
             if dXdt == 0:
                 MuE = 0
-            delE = MuE * self.biomass[self.simulation_timestep] * self.del_t 
+            # Get rate of enzyme production based on the substrate to cell ratio value
+            else:
+                weibull = utils.enzyme_production_rate(sub_cell_ratio, self.cs)
+                MuE = self.MuE_opt * weibull
             
+            # calculate Rate of enzyme production
+            
+            # Amount of enzymes produced
+            dEdt = utils.enzymes_produced(self.biomass[self.simulation_timestep], MuE)
             # Update enzyme variable
-            self.enzyme_activity[self.simulation_timestep + 1] = self.enzyme_activity[self.simulation_timestep] + delE
+            self.enzyme_activity[self.simulation_timestep + 1] = self.enzyme_activity[self.simulation_timestep] + dEdt
+            # =======================================================================
+            
             
             self.simulation_timestep += 1
             self.timestep[self.simulation_timestep] = self.simulation_timestep
             self.experiment_index[self.simulation_timestep] = self.experiment_number
-            self.temperature[self.simulation_timestep] = self.T
+
             #---------------------------------------------------------------------------------------#
             #                                   Termination Conditions
             #---------------------------------------------------------------------------------------#
@@ -306,27 +239,21 @@ class Reactor(gymnasium.Env):
                 self.terminate = True
                 
                 break
-
-            # after no substrate cell will become 0
-            if self.biomass[self.simulation_timestep] <= 0.00001:
+            
+            # Terminate cells are not produced for more than 2 hours
+            if self.cell_death_timer >= self.cell_death_hour/self.del_t:
                 self.terminate = True
-                
+
                 break
-        
-            # # terminate if tank capacity is full and cells start dying
-            # if self.substrate_in_tank_liters >= self.max_substrate_limit_liters and int(self.cell_death_timer) >= int(self.cell_death_hour/self.del_t):
-            #     self.terminate = True
-                
-            #     break
 
             # Terminate if tank is full and substrate has reached 0
-            if self.tank_is_full: #and self.substrate[self.simulation_timestep] <= 0:
+            if self.tank_is_full and dXdt == 0:
                 self.terminate = True
 
                 break
 
             # INTERVENTION TIME: Break the loop when its time to take an action
-            if (self.simulation_timestep) % (self.intervention_step) == 0 and self.simulation_timestep != 0: #and self.substrate_in_tank_liters < self.max_substrate_limit_liters:
+            if (self.simulation_timestep) % (self.intervention_step) == 0 and self.simulation_timestep != 0 and self.tank_is_full == False: #and self.substrate_in_tank_liters < self.max_substrate_limit_liters:
                 self.step_called = True
 
                 break
@@ -339,35 +266,23 @@ class Reactor(gymnasium.Env):
         
         # ------------- Change in enzymes -----------------
         self.current_e_activ = self.enzyme_activity[self.simulation_timestep]
-        change = (self.current_e_activ - self.before_e_activ)
+        change = (self.current_e_activ - self.before_e_activ) * 1000
         self.before_e_activ = self.current_e_activ
-
         # ------------- No change in enzymes -----------------
         if change <= 0:
-            nochange = - 0.001
-            pos_change = 0
+            nochange = -1
         else:
             nochange = 0
-            pos_change = 10
-
-        # ------------- Distance from the target enzymes -----------------
-        dist =( 1/ (config.TARGET_ENZYME_ACTIVTIY - self.current_e_activ) ) * 100
-        
-        # ------------- Inverse of Time -----------------
-        time_inverse = (1/self.simulation_timestep) * 100
-    
         # ------------- Calculate Reward -----------------
-        reward = change + nochange 
-
+        reward = change + nochange + self.enzyme_activity[self.simulation_timestep]
+        #print(f" change is : {change} and no change is: {nochange} reward is: {reward}")
         # --------------- Write it in csv -----------------
         self.change[self.simulation_timestep] = change
-        self.dist[self.simulation_timestep] = dist 
-        self.nochange[self.simulation_timestep] = nochange 
         self.reward[self.simulation_timestep] = reward
     
 
         # Save plot.txt
-        with open('plot.txt','a') as plotting_file:
+        with open(f'{f"experiments/{self.experiment_name}"}/plot.txt','a') as plotting_file:
             plotting_file.write(f"{self.tvec[self.simulation_timestep]},{self.biomass[self.simulation_timestep]},{self.substrate[self.simulation_timestep]},{self.enzyme_activity[self.simulation_timestep]},{self.T},{reward}\n")
             plotting_file.close()
 
@@ -376,9 +291,8 @@ class Reactor(gymnasium.Env):
             self.experiment_number += 1
             df_info = pd.DataFrame(self.D)
             df_imp = df_info.head(self.simulation_timestep)
-            df_imp.to_csv(config.TRAINING_DATA_LOGS_FILENAME, mode='a',header=False, index=True)
-                    
-
+            df_imp.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", mode='a',header=False, index=True)
+        
         return (
             np.array([
             self.simulation_timestep, 
