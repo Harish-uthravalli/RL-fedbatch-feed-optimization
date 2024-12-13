@@ -12,10 +12,10 @@ import os
 
 class Reactor(gymnasium.Env):
 
-    def __init__(self, experiment_name="def"):
+    def __init__(self, experiment_name="hyp_tune"):
 
         # Observation Space
-        self.action_space = spaces.Box(low=np.array([0]), high=np.array([0.05]), dtype=np.float16)
+        self.action_space = spaces.Box(low=np.array([0]), high=np.array([0.05]), dtype=np.float32)
 
         # Action Space
         self.observation_space = spaces.Box(low=np.array([0, 0, 0]), high=np.array([np.inf, np.inf, np.inf]), dtype=np.float64)
@@ -53,8 +53,8 @@ class Reactor(gymnasium.Env):
        # Initial Tank conditions
         #self.X0 = config.X0  # g/L
         #self.S0 = config.S0 # mol/L
-        self.X0 = round(self.np_random.uniform(0.5, 1.2),1) # g/L 
-        self.S0 = config.S0 # mol/L
+        self.X0 = round(self.np_random.uniform(0.7, 0.9),1) # g/L 
+        self.S0 = round(self.np_random.uniform(0.005, 0.007),3) # mol/L
         self.E0 = config.E0 # U/L  
     
         # Process conditions
@@ -65,7 +65,7 @@ class Reactor(gymnasium.Env):
         self.Ks = config.KS
         self.Yxs = config.YXS
         self.MuE_opt = config.MUE_OPT #round(random.uniform(0.05, 0.15),3)
-        self.mu_max = round(random.uniform(0.1, 0.3),3)
+        self.mu_max = config.MU_MAX #round(random.uniform(0.1, 0.3),3)
         self.del_t = config.DEL_T
         self.t_end = config.T_END
         self.total_sim_steps = int(self.t_end/self.del_t)
@@ -129,7 +129,7 @@ class Reactor(gymnasium.Env):
         self.intervention_step = int(self.intervention_time/self.del_t)
         self.cell_death_rate = config.CELL_DEATH_RATE
         self.terminate = False
-        self.step_called = True
+        self.step_called = False
         self.tank_is_full = False
         self.first_reward = True
         self.max_slope = 0
@@ -138,9 +138,6 @@ class Reactor(gymnasium.Env):
 
         self.current_e_activ = 0.0
         self.before_e_activ =  self.E0
-        self.e_cur_change = 0
-        self.e_prev_change = 0
-        self.max_e_change = 0
 
         # Clear contents of plotting file
         with open(f"experiments/{self.experiment_name}/plot.txt",'w') as f:
@@ -154,13 +151,19 @@ class Reactor(gymnasium.Env):
 
 
     def step(self, action):
-        self.step_called = True
-        substrate_action = action[0]
-        for i in range(config.INTERVENTION_STEP):
-            self.feeding_action[self.simulation_timestep] = substrate_action
+        while True:
+
+            #---------------------------------------------------------------------------------------#
+            #                                   Simluation 
+            #---------------------------------------------------------------------------------------#
+            if self.step_called:
+                # Get the action from RL 
+                substrate_action = action[0]
+                #print(substrate_action)
+                self.feeding_action[self.simulation_timestep] = substrate_action
             # =========================== Cell Production ===========================
             # Rate of cell production based on substrate
-            MuX = utils.cell_growth_rate_test(self.substrate[self.simulation_timestep], self.mu_max)
+            MuX = utils.cell_growth_rate(self.substrate[self.simulation_timestep])
             # Cells produced
             dXdt = utils.cells_produced(self.biomass[self.simulation_timestep], MuX)
             # =======================================================================
@@ -179,8 +182,6 @@ class Reactor(gymnasium.Env):
             # =========================== Check no change in cell concentration =========================== 
             if dXdt == 0:
                 self.cell_death_timer += 1
-                self.terminate = True
-                break
             else:
                 self.cell_death_timer = 0
             # =================================================================================
@@ -233,9 +234,34 @@ class Reactor(gymnasium.Env):
             self.timestep[self.simulation_timestep] = self.simulation_timestep
             self.experiment_index[self.simulation_timestep] = self.experiment_number
 
-            if self.simulation_timestep >= int(self.ns)-1:
+            #---------------------------------------------------------------------------------------#
+            #                                   Termination Conditions
+            #---------------------------------------------------------------------------------------#
+            # Check if Episode is over
+            if self.simulation_timestep == int(self.ns - 2):
                 self.terminate = True
+                
                 break
+            
+            # Terminate cells are not produced for more than 2 hours
+            if self.cell_death_timer >= self.cell_death_hour/self.del_t:
+                self.terminate = True
+
+                break
+
+            # Terminate if tank is full and substrate has reached 0
+            if self.tank_is_full and dXdt == 0:
+                self.terminate = True
+
+                break
+
+            # INTERVENTION TIME: Break the loop when its time to take an action
+            if (self.simulation_timestep) % (self.intervention_step) == 0 and self.simulation_timestep != 0 and self.tank_is_full == False: #and self.substrate_in_tank_liters < self.max_substrate_limit_liters:
+                self.step_called = True
+
+                break
+
+            #---------------------------------------------------------------------------------------#
 
         # -------------------------------------------------------------------------------
         # ------------------------------ Reward ----------------------------------------- 
@@ -243,51 +269,32 @@ class Reactor(gymnasium.Env):
         
         # ------------- Change in enzymes -----------------
         self.current_e_activ = self.enzyme_activity[self.simulation_timestep]
-        self.e_cur_change = (self.current_e_activ - self.before_e_activ) * 10
-    
+        change = (self.current_e_activ - self.before_e_activ) * 10
         self.before_e_activ = self.current_e_activ
-
-        if self.e_cur_change <= 0:
-            negative_reward = -1
+        # ------------- No change in enzymes -----------------
+        if change <= 0:
+            pos_change = 0
+            nochange = -1
         else:
-            negative_reward = 0
-        
-        if self.enzyme_activity[self.simulation_timestep] > 2.6:
-            enzyme_goal_reward = 10
+            pos_change = +1
+            nochange = 0
+        # ------------- Calculate Reward -----------------
+        if self.enzyme_activity[self.simulation_timestep] > 3:
+            activity_reward = 10
         else:
-            enzyme_goal_reward = 0
-        
-        #reward = self.e_cur_change + utils.reward_function(self.current_e_activ) + negative_reward
-        reward = self.e_cur_change + negative_reward
+            activity_reward = 1
 
+        reward = change + nochange + self.enzyme_activity[self.simulation_timestep]
+        #print(f" change is : {change} and no change is: {nochange} reward is: {reward}")
         # --------------- Write it in csv -----------------
-        self.change[self.simulation_timestep] = self.e_cur_change
+        self.change[self.simulation_timestep] = change
         self.reward[self.simulation_timestep] = reward
     
+
         # Save plot.txt
-        # print(self.simulation_timestep)
         with open(f'{f"experiments/{self.experiment_name}"}/plot.txt','a') as plotting_file:
             plotting_file.write(f"{self.tvec[self.simulation_timestep]},{self.biomass[self.simulation_timestep]},{self.substrate[self.simulation_timestep]},{self.enzyme_activity[self.simulation_timestep]},{self.T},{reward}\n")
             plotting_file.close()
-
-        #---------------------------------------------------------------------------------------#
-        #                                   Termination Conditions
-        #---------------------------------------------------------------------------------------#
-    
-        # Terminate cells are not produced for more than 2 hours
-        if self.cell_death_timer >= self.cell_death_hour/self.del_t:
-            self.terminate = True
-
-        # Terminate if tank is full and substrate has reached 0
-        if self.tank_is_full:
-            self.terminate = True
-
-        # INTERVENTION TIME: Break the loop when its time to take an action
-        if (self.simulation_timestep) % (self.intervention_step) == 0 and self.simulation_timestep != 0 and self.tank_is_full == False: #and self.substrate_in_tank_liters < self.max_substrate_limit_liters:
-            self.step_called = True
-
-
-            #---------------------------------------------------------------------------------------#
 
         # Next episode/experiement
         if self.terminate:

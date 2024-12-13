@@ -7,7 +7,6 @@ from gymnasium.envs.registration import register
 import config
 import shutil
 
-
 register(
     id="reactor_v2",
     entry_point="reactor_env:Reactor",
@@ -21,6 +20,7 @@ experiment_name = config.EXPERIMENT_NAME
 model_name = config.MODEL
 
 # Logfiles and model save path
+old_model = 'experiments/sac_c10n1_x0mux_2/model/best_model.zip'
 models_dir = f'experiments/{experiment_name}/model'
 logdir = f'logs'
 
@@ -43,18 +43,6 @@ shutil.copy('config.py', f"experiments/{config.EXPERIMENT_NAME}")
 env = gymnasium.make('reactor_v2', experiment_name=experiment_name)
 env.reset()
 
-# Initiate the model dynamically based on config.MODEL
-if model_name == "PPO":
-    model = PPO('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "DDPG":
-    model = DDPG('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "SAC":
-    model = SAC('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "A2C":
-    model = A2C('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "TD3":
-    model = TD3('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-
 # Evaluation Callback
 eval_callback = EvalCallback(
     env, 
@@ -64,14 +52,15 @@ eval_callback = EvalCallback(
     verbose=1,
     deterministic=False
 )
+model = SAC.load(old_model, env=env)  # Load the pretrained model
 
 # Training loop
-TIMESTEPS = 1_000_000
+TIMESTEPS = 100_000
 EPOCHS = 10
 model_save_path = os.path.join(models_dir,f'{experiment_name}.zip')
 print(f"-------------------- Running Experiment: {experiment_name} -------------------- ")
 print(f"-------------------- TRAINING {model_name} --------------------")
 for i in range(1, EPOCHS + 1):
     print(f"Training {i}/{EPOCHS}")
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name, callback=eval_callback, progress_bar=True)
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name,callback=eval_callback, progress_bar=True)
     model.save(model_save_path)

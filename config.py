@@ -27,7 +27,7 @@ From https://static-content.springer.com/esm/art%3A10.1007%2Fs12257-020-0153-z/M
 
 TRAINING_DATA_LOGS_FILENAME = "training_data.csv"
 TRAINING_DATA_LOG_COLUMNS = ["timestep","experiment_number","biomass","substrate_in_tank","enzyme_activity","temperature","feeding_action","reward","change","distance","nochange","t4","t5","flow_volume"]
-EXPERIMENT_NAME = "sac_d_r-cne"
+EXPERIMENT_NAME = "sac_c10n1"
 
 # ---------------------------------- Reactor Parameters ------------------------------------------------
 
@@ -38,7 +38,7 @@ S0 = 0.005 # mol/L
 E0 = 0.0 # U/L 
 
 INIT_TEMPRATURE = 30 #'C 
-OPTIMUM_TEMPERATURE = 32 #'C
+OPTIMUM_TEMPERATURE = 30 #'C
 OPT_TEMP_RANGE = 2
 INIT_AGITATION = 250 # RPM
 OPT_SUB_CELL_RATIO = 0.004
@@ -73,11 +73,11 @@ EXT_TANK_SUBSTRATE_CONC = 0.05 # mol/L
 # ------------------------------------- OTHER PARAMETERS ------------------------------------------------
 
 CELL_DEATH_TIMER = 0
-CELL_DEATH_TIME = 2 # hours
+CELL_DEATH_TIME = 1 # hours
 INTERVENTION_TIME = 0.1 
 INTERVENTION_STEP = int(INTERVENTION_TIME/DEL_T)
 CELL_DEATH_RATE = 0.010
-TARGET_ENZYME_ACTIVTIY = 10
+TARGET_ENZYME_ACTIVTIY = 4
 TEMP_CHANGE = 0.1
 
 # ------------------------------------- RL ALGO PARAMETERS ------------------------------------------------

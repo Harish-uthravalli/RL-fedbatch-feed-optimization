@@ -39,22 +39,6 @@ def enzymes_produced(X, MuE):
     
 #     return rate
 
-def scr_reward(ratio):
-    """
-    Calculate the maximum growth rate using the given formula.
-
-    Args:
-    - mu_opt (float): Optimal growth rate.
-    - T (float): Current temperature (or variable of interest).
-    - T_opt (float): Optimal temperature (or variable of interest).
-    - r (float): Spread or tolerance parameter.
-
-    Returns:
-    - float: Maximum growth rate (mu_max).
-    """
-    reward = 10 * np.exp(-((ratio - config.OPT_SUB_CELL_RATIO) ** 2) / (0.0005 ** 2))
-    return reward
-
 def reward_function(current_enzyme_activity, target_activity=4):
     # Calculate the absolute distance to the target
     distance = abs(target_activity - current_enzyme_activity)
@@ -69,22 +53,12 @@ def reward_function(current_enzyme_activity, target_activity=4):
     
     return reward
 
-
 # Get the rate of cell growth 
 def cell_growth_rate(S):
     if S < 0.002 or S > 0.030:
             rate = 0
     else:
         rate = config.MU_MAX
-    
-    return rate
-
-# Get the rate of cell growth 
-def cell_growth_rate_test(S,mux):
-    if S < 0.002 or S > 0.030:
-            rate = 0
-    else:
-        rate = mux
     
     return rate
 

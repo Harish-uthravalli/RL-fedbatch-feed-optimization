@@ -17,7 +17,7 @@ def animate(i):
     T = []
     for line in lines:
         if len(line) > 1:
-            t, x, s, e = line.split(',')
+            t, x, s, e, _, _ = line.split(',')
             T.append(float(t))
             X.append(float(x))
             S.append(float(s))
@@ -30,9 +30,6 @@ def animate(i):
     ax2.plot(T, S, color="orange", label="Substrate mol/L")
     ax3.plot(T , X ,color="blue", label="Cells CDW g/L")
     ax3.spines['right'].set_position(('axes',1.15))
-    ax1.set_xlim(0,50)
-    ax2.set_xlim(0,50)
-    ax3.set_xlim(0,50)
     ax1.set_ylabel("Enzyme Activity U/L", color="red")
     ax1.set_xlabel("Time (hours)")
     ax2.set_ylabel("Substrate mol/L ", color="orange")
