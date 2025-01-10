@@ -32,12 +32,7 @@ class Reactor(gymnasium.Env):
 
         self.experiment_number = config.EXPERIMENT_NUMBER
 
-        self.weibull_values = pd.read_csv('pdfcsv.csv')
-        self.xvalues = self.weibull_values['x']
-        self.y_values = self.weibull_values['pdf']
 
-        # Create a cubic spline interpolation model
-        self.cs = CubicSpline(self.xvalues, self.y_values)
 
     def seed(self, seed=None):
         """Sets the seed for the environment's random elements."""
@@ -51,9 +46,8 @@ class Reactor(gymnasium.Env):
         # ==============================================    Reactor Setup    ======================================================
 
        # Initial Tank conditions
-        #self.X0 = config.X0  # g/L
         #self.S0 = config.S0 # mol/L
-        self.X0 = round(self.np_random.uniform(0.5, 1.2),1) # g/L 
+        self.X0 = round(self.np_random.uniform(0.6, 1),2) # g/L 
         self.S0 = config.S0 # mol/L
         self.E0 = config.E0 # U/L  
     
@@ -65,7 +59,7 @@ class Reactor(gymnasium.Env):
         self.Ks = config.KS
         self.Yxs = config.YXS
         self.MuE_opt = config.MUE_OPT #round(random.uniform(0.05, 0.15),3)
-        self.mu_max = round(random.uniform(0.1, 0.3),3)
+        self.mu_max = round(random.uniform(0.15,0.25),2)
         self.del_t = config.DEL_T
         self.t_end = config.T_END
         self.total_sim_steps = int(self.t_end/self.del_t)
@@ -136,11 +130,8 @@ class Reactor(gymnasium.Env):
         self.exp_slopes = []
         self.max_rew_sub_stop = 0
 
-        self.current_e_activ = 0.0
-        self.before_e_activ =  self.E0
-        self.e_cur_change = 0
-        self.e_prev_change = 0
-        self.max_e_change = 0
+        self.prev_ea = 0
+        self.enzyme_prev_change = 0
 
         # Clear contents of plotting file
         with open(f"experiments/{self.experiment_name}/plot.txt",'w') as f:
@@ -180,7 +171,6 @@ class Reactor(gymnasium.Env):
             if dXdt == 0:
                 self.cell_death_timer += 1
                 self.terminate = True
-                break
             else:
                 self.cell_death_timer = 0
             # =================================================================================
@@ -195,6 +185,7 @@ class Reactor(gymnasium.Env):
                 # Tank is full
                 else:
                     self.tank_is_full = True
+                    self.terminate = True
                 # Make step False till new action is taken
                 self.step_called = False
             
@@ -217,8 +208,7 @@ class Reactor(gymnasium.Env):
                 MuE = 0
             # Get rate of enzyme production based on the substrate to cell ratio value
             else:
-                weibull = utils.enzyme_production_rate(sub_cell_ratio, self.cs)
-                MuE = self.MuE_opt * weibull
+                MuE = self.MuE_opt * utils.get_weibull_y_value(sub_cell_ratio, peak=config.OPT_SUB_CELL_RATIO * 1e6)
             
             # calculate Rate of enzyme production
             
@@ -227,14 +217,15 @@ class Reactor(gymnasium.Env):
             # Update enzyme variable
             self.enzyme_activity[self.simulation_timestep + 1] = self.enzyme_activity[self.simulation_timestep] + dEdt
             # =======================================================================
-            
-            
+        
             self.simulation_timestep += 1
             self.timestep[self.simulation_timestep] = self.simulation_timestep
             self.experiment_index[self.simulation_timestep] = self.experiment_number
 
             if self.simulation_timestep >= int(self.ns)-1:
                 self.terminate = True
+
+            if self.terminate:
                 break
 
         # -------------------------------------------------------------------------------
@@ -242,26 +233,30 @@ class Reactor(gymnasium.Env):
         # -------------------------------------------------------------------------------
         
         # ------------- Change in enzymes -----------------
-        self.current_e_activ = self.enzyme_activity[self.simulation_timestep]
-        self.e_cur_change = (self.current_e_activ - self.before_e_activ) * 10
-    
-        self.before_e_activ = self.current_e_activ
+        self.current_ea = self.enzyme_activity[self.simulation_timestep]
+        self.enzyme_change = (self.current_ea - self.prev_ea) * 10
+        #print(f"previous enzyme change: {self.enzyme_prev_change} and current {self.enzyme_change}, change: {self.enzyme_change}")
+        self.prev_ea = self.current_ea
 
-        if self.e_cur_change <= 0:
-            negative_reward = -1
+        if self.enzyme_change <= 0:
+            change_reward = -10
         else:
-            negative_reward = 0
+            change_reward = 10
+
+        if self.enzyme_change > self.enzyme_prev_change:
+            change_bonus = 100
+        else:
+            change_bonus = 0
         
-        if self.enzyme_activity[self.simulation_timestep] > 2.6:
-            enzyme_goal_reward = 10
-        else:
-            enzyme_goal_reward = 0
+        self.enzyme_prev_change = self.enzyme_change
+            
+        
         
         #reward = self.e_cur_change + utils.reward_function(self.current_e_activ) + negative_reward
-        reward = self.e_cur_change + negative_reward
+        reward = change_reward + change_bonus
 
         # --------------- Write it in csv -----------------
-        self.change[self.simulation_timestep] = self.e_cur_change
+        self.change[self.simulation_timestep] = self.enzyme_change
         self.reward[self.simulation_timestep] = reward
     
         # Save plot.txt

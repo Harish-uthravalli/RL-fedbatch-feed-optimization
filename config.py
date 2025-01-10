@@ -27,7 +27,7 @@ From https://static-content.springer.com/esm/art%3A10.1007%2Fs12257-020-0153-z/M
 
 TRAINING_DATA_LOGS_FILENAME = "training_data.csv"
 TRAINING_DATA_LOG_COLUMNS = ["timestep","experiment_number","biomass","substrate_in_tank","enzyme_activity","temperature","feeding_action","reward","change","distance","nochange","t4","t5","flow_volume"]
-EXPERIMENT_NAME = "sac_c10n1"
+EXPERIMENT_NAME = "sac_cn10cb100_1_ret"
 
 # ---------------------------------- Reactor Parameters ------------------------------------------------
 

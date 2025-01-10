@@ -10,6 +10,8 @@ import config
 import shutil
 import os
 import torch
+from scipy.stats import weibull_min
+import math
 
 def get_random_action():
     return random.randint(0, 100)
@@ -78,6 +80,35 @@ def cell_growth_rate(S):
         rate = config.MU_MAX
     
     return rate
+
+import math
+def arrhenius(scr, scr_opt, mue_opt, r=1800):
+    if scr > 9000 or scr < 100:
+        mu_max = 0
+    else:
+        exponent = -((scr - scr_opt* 1e6)**2) / (r**2)
+        mu_max = mue_opt * math.exp(exponent)
+    return mu_max
+
+def get_weibull_y_value(input_value, k=3, peak=4000, max_x=10000, num_points=1000):
+    
+    # Compute the scale parameter (lambda) based on the shape parameter
+    lambda_ = peak / ((k - 1) / k)**(1 / k)
+
+    # Generate x values and Weibull PDF
+    x = np.linspace(0, max_x, num_points)
+    pdf = weibull_min.pdf(x, k, scale=lambda_)
+
+    # Normalize the PDF to range from 0 to 1
+    pdf = pdf / np.max(pdf)
+
+    # Find the corresponding Y value using interpolation
+    y_value = np.interp(input_value, x, pdf)
+
+    if y_value <= 0.01:
+        y_value = 0
+
+    return y_value
 
 # Get the rate of cell growth 
 def cell_growth_rate_test(S,mux):

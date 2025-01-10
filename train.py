@@ -6,7 +6,8 @@ import utils
 from gymnasium.envs.registration import register
 import config
 import shutil
-
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes, StopTrainingOnNoModelImprovement
+from earlystopping import EarlyStoppingCallback
 
 register(
     id="reactor_v2",
@@ -55,23 +56,32 @@ elif model_name == "A2C":
 elif model_name == "TD3":
     model = TD3('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
 
+
+stop_train_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=30, min_evals=10, verbose=1)
+
 # Evaluation Callback
 eval_callback = EvalCallback(
     env, 
     best_model_save_path=models_dir,
-    n_eval_episodes=20,
-    eval_freq=50_000,
+    n_eval_episodes=50,
+    eval_freq=10_000,
     verbose=1,
-    deterministic=False
+    deterministic= False,
+    callback_after_eval= stop_train_callback
 )
 
+# Stop training epoch if mean reward has not changed for 10_000 experiments
+convergence_callback = EarlyStoppingCallback(patience=10000)
+
+
 # Training loop
-TIMESTEPS = 1_000_000
-EPOCHS = 10
+TIMESTEPS = 5e6
+#TIMESTEPS = 100_000
+EPOCHS = 1
 model_save_path = os.path.join(models_dir,f'{experiment_name}.zip')
 print(f"-------------------- Running Experiment: {experiment_name} -------------------- ")
 print(f"-------------------- TRAINING {model_name} --------------------")
 for i in range(1, EPOCHS + 1):
     print(f"Training {i}/{EPOCHS}")
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name, callback=eval_callback, progress_bar=True)
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name, callback=eval_callback , progress_bar=True)
     model.save(model_save_path)
