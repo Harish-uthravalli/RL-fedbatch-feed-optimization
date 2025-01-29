@@ -91,7 +91,6 @@ def arrhenius(scr, scr_opt, mue_opt, r=1800):
     return mu_max
 
 def get_weibull_y_value(input_value, k=3, peak=4000, max_x=10000, num_points=1000):
-    
     # Compute the scale parameter (lambda) based on the shape parameter
     lambda_ = peak / ((k - 1) / k)**(1 / k)
 
@@ -104,7 +103,6 @@ def get_weibull_y_value(input_value, k=3, peak=4000, max_x=10000, num_points=100
 
     # Find the corresponding Y value using interpolation
     y_value = np.interp(input_value, x, pdf)
-
     if y_value <= 0.01:
         y_value = 0
 

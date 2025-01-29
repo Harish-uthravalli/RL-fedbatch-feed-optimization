@@ -8,6 +8,8 @@ import config
 import shutil
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes, StopTrainingOnNoModelImprovement
 from earlystopping import EarlyStoppingCallback
+import torch
+
 
 register(
     id="reactor_v2",
@@ -39,29 +41,42 @@ if not os.path.exists(logdir):
 files = os.listdir("copy_scripts")
 utils.copy_files(files)
 shutil.copy('config.py', f"experiments/{config.EXPERIMENT_NAME}")
+shutil.copy('utils.py', f"experiments/{config.EXPERIMENT_NAME}")
 
 # Compile the environment
-env = gymnasium.make('reactor_v2', experiment_name=experiment_name)
+env = gymnasium.make('reactor_v2', experiment_name=experiment_name,scr_opt=config.OPT_SUB_CELL_RATIO, mue_opt = config.MUE_OPT, eval_model=False)
 env.reset()
+
+eval_env = gymnasium.make('reactor_v2', experiment_name=experiment_name, scr_opt=config.OPT_SUB_CELL_RATIO, mue_opt = config.MUE_OPT, eval_model=True)
+eval_env.reset()
 
 # Initiate the model dynamically based on config.MODEL
 if model_name == "PPO":
     model = PPO('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "DDPG":
-    model = DDPG('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "SAC":
-    model = SAC('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "A2C":
-    model = A2C('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
-elif model_name == "TD3":
-    model = TD3('MlpPolicy', env, tensorboard_log=logdir, device='cuda')
 
+elif model_name == "SAC":
+    model = SAC(
+        'MlpPolicy', 
+        env, 
+        tensorboard_log=logdir, 
+        device='cuda'
+        # learning_rate = 2.0100866791609192e-05,
+        # buffer_size = 127415,
+        # learning_starts = 8942,
+        # batch_size= 512,
+        # tau = 0.0265783511470118,
+        # gamma=0.920548515347066,
+        # train_freq = 1,
+        # gradient_steps =  20,
+        # target_entropy = -0.7978268822546424,
+        # target_update_interval =16
+        )
 
 stop_train_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=30, min_evals=10, verbose=1)
-
+                 
 # Evaluation Callback
 eval_callback = EvalCallback(
-    env, 
+    eval_env, 
     best_model_save_path=models_dir,
     n_eval_episodes=50,
     eval_freq=10_000,
@@ -69,10 +84,6 @@ eval_callback = EvalCallback(
     deterministic= False,
     callback_after_eval= stop_train_callback
 )
-
-# Stop training epoch if mean reward has not changed for 10_000 experiments
-convergence_callback = EarlyStoppingCallback(patience=10000)
-
 
 # Training loop
 TIMESTEPS = 5e6

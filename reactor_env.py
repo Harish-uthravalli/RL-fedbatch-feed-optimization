@@ -12,7 +12,7 @@ import os
 
 class Reactor(gymnasium.Env):
 
-    def __init__(self, experiment_name="def"):
+    def __init__(self, experiment_name="def", scr_opt=config.OPT_SUB_CELL_RATIO, mue_opt = config.MUE_OPT, eval_model=False):
 
         # Observation Space
         self.action_space = spaces.Box(low=np.array([0]), high=np.array([0.05]), dtype=np.float16)
@@ -20,19 +20,22 @@ class Reactor(gymnasium.Env):
         # Action Space
         self.observation_space = spaces.Box(low=np.array([0, 0, 0]), high=np.array([np.inf, np.inf, np.inf]), dtype=np.float64)
 
-        
+        self.eval_model = eval_model
+        self.scr_opt = scr_opt
+        self.mue_opt = mue_opt
         self.experiment_name = experiment_name
-
-        if not os.path.exists(f"experiments/{self.experiment_name}"):
-            os.makedirs(f"experiments/{self.experiment_name}")
-        
-        # CSV File
-        self.df = pd.DataFrame(columns=config.TRAINING_DATA_LOG_COLUMNS)
-        self.df.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", index=True)  
-
         self.experiment_number = config.EXPERIMENT_NUMBER
+        
+        if self.eval_model == False:
+            
+            if not os.path.exists(f"experiments/{self.experiment_name}"):
+                os.makedirs(f"experiments/{self.experiment_name}")
+            # CSV File
+            self.df = pd.DataFrame(columns=config.TRAINING_DATA_LOG_COLUMNS)
+            self.df.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", index=True)  
 
 
+    
 
     def seed(self, seed=None):
         """Sets the seed for the environment's random elements."""
@@ -46,8 +49,13 @@ class Reactor(gymnasium.Env):
         # ==============================================    Reactor Setup    ======================================================
 
        # Initial Tank conditions
-        #self.S0 = config.S0 # mol/L
-        self.X0 = round(self.np_random.uniform(0.6, 1),2) # g/L 
+        if self.eval_model:
+            self.X0 = config.X0
+            self.mu_max = config.MU_MAX
+        else:
+            self.X0 = round(self.np_random.uniform(0.6, 1),2) # g/L 
+            self.mu_max = round(random.uniform(0.15,0.25),2)
+
         self.S0 = config.S0 # mol/L
         self.E0 = config.E0 # U/L  
     
@@ -58,8 +66,7 @@ class Reactor(gymnasium.Env):
         # model parameters
         self.Ks = config.KS
         self.Yxs = config.YXS
-        self.MuE_opt = config.MUE_OPT #round(random.uniform(0.05, 0.15),3)
-        self.mu_max = round(random.uniform(0.15,0.25),2)
+        self.MuE_opt = self.mue_opt #round(random.uniform(0.05, 0.15),3)
         self.del_t = config.DEL_T
         self.t_end = config.T_END
         self.total_sim_steps = int(self.t_end/self.del_t)
@@ -208,7 +215,9 @@ class Reactor(gymnasium.Env):
                 MuE = 0
             # Get rate of enzyme production based on the substrate to cell ratio value
             else:
-                MuE = self.MuE_opt * utils.get_weibull_y_value(sub_cell_ratio, peak=config.OPT_SUB_CELL_RATIO * 1e6)
+                MuE = self.MuE_opt * utils.get_weibull_y_value(sub_cell_ratio, peak=self.scr_opt * 1e6)
+                # print("Optimum ratio = ",self.scr_opt)
+                # print("MuE_Max = ",self.mue_opt)
             
             # calculate Rate of enzyme production
             
@@ -286,6 +295,7 @@ class Reactor(gymnasium.Env):
 
         # Next episode/experiement
         if self.terminate:
+            #if self.eval_model == False:
             self.experiment_number += 1
             df_info = pd.DataFrame(self.D)
             df_imp = df_info.head(self.simulation_timestep)
@@ -300,5 +310,5 @@ class Reactor(gymnasium.Env):
             reward, 
             self.terminate, 
             False, 
-            {}
+            {"enzyme_activity": self.enzyme_activity[self.simulation_timestep]}
         )
