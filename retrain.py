@@ -6,6 +6,11 @@ import utils
 from gymnasium.envs.registration import register
 import config
 import shutil
+import numpy as np
+from earlystopping import EarlyStoppingCallback
+from eval_callback_new import EpisodeBasedEvalCallback
+
+
 
 register(
     id="reactor_v2",
@@ -14,13 +19,16 @@ register(
 )
 
 # Experiment Details
-experiment_name = config.EXPERIMENT_NAME
+scr = 0.002
+mue_opt = 0.10
+experiment_name = f"sac_rt_scr-{scr}_mopt-{mue_opt}"
 
 # Model Specifications
-model_name = config.MODEL
+model_name = 'SAC'
 
 # Logfiles and model save path
-old_model = 'experiments/sac_cn10cb100_df/model/best_model.zip'
+trained_model_name = 'sac_evalcb'
+trained_model_path = os.path.join('experiments', trained_model_name, 'model', 'best_model.zip')
 models_dir = f'experiments/{experiment_name}/model'
 logdir = f'logs'
 
@@ -36,30 +44,46 @@ if not os.path.exists(logdir):
 
 # Copy files to experiment folder
 files = os.listdir("copy_scripts")
-utils.copy_files(files)
-shutil.copy('config.py', f"experiments/{config.EXPERIMENT_NAME}")
+for file in files:
+    file_path = os.path.join('copy_scripts', file)
+    shutil.copy(file_path, f"experiments/{experiment_name}")
+shutil.copy('config.py', f"experiments/{experiment_name}")
+shutil.copy('utils.py', f"experiments/{experiment_name}")
 
 # Compile the environment
-env = gymnasium.make('reactor_v2', experiment_name=experiment_name)
+env = gymnasium.make('reactor_v2', experiment_name=experiment_name, scr_opt= scr, mue_opt = mue_opt, eval_model=False)
 env.reset()
 
+env_test = gymnasium.make('reactor_v2', experiment_name=experiment_name, scr_opt= scr, mue_opt = mue_opt, eval_model=True)
+env_test.reset()
 
-model = SAC.load(old_model, env=env, device='cuda')  # Load the pretrained model
+model = SAC.load(trained_model_path, env=env, device='cuda')  # Load the pretrained model
+model.set_env(env)
+
+from episode_count_callback import EpisodeCounterCallback
+# Initialize an empty list to store episode counts
+episode_counts = []
+
+# Create the callback and pass the list to it
+episode_counter = EpisodeCounterCallback(episode_list=episode_counts)
 
 stop_train_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=30, min_evals=5, verbose=1)
 
+enz_epi_eval_callback = EpisodeBasedEvalCallback(env_test, model_dir=models_dir ,eval_interval=150, n_eval_episodes=50, patience=30, verbose=1)
+
 # Evaluation Callback
 eval_callback = EvalCallback(
-    env, 
+    env_test, 
     best_model_save_path=models_dir,
     n_eval_episodes=50,
     eval_freq=10_000,
-    verbose=1,
+    verbose=0,
     deterministic= False,
     callback_after_eval= stop_train_callback
 )
+earlystopping_callback = EarlyStoppingCallback(patience=10000)
 
-# Training loop
+
 TIMESTEPS = 5e6
 EPOCHS = 1
 model_save_path = os.path.join(models_dir,f'{experiment_name}.zip')
@@ -67,5 +91,12 @@ print(f"-------------------- Running Experiment: {experiment_name} -------------
 print(f"-------------------- TRAINING {model_name} --------------------")
 for i in range(1, EPOCHS + 1):
     print(f"Training {i}/{EPOCHS}")
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name,callback=eval_callback, progress_bar=True)
-    model.save(model_save_path)
+    model.learn(
+        total_timesteps=TIMESTEPS, 
+        reset_num_timesteps=False, 
+        tb_log_name=experiment_name,
+        callback=[eval_callback, episode_counter], 
+        progress_bar=True
+    )
+
+print("------------ Retraining Complete ! ------------")

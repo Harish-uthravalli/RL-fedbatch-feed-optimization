@@ -90,10 +90,19 @@ def arrhenius(scr, scr_opt, mue_opt, r=1800):
         mu_max = mue_opt * math.exp(exponent)
     return mu_max
 
+def enzyme_activity_reward(current_activity, target=3.5, reward_range=(0, 10), scale=1.0):
+    
+    distance = abs(current_activity - target)
+    reward = np.exp(-scale * distance)
+    min_r, max_r = reward_range
+    reward = min_r + (max_r - min_r) * reward
+    
+    return reward
+
 def get_weibull_y_value(input_value, k=3, peak=4000, max_x=10000, num_points=1000):
     # Compute the scale parameter (lambda) based on the shape parameter
     lambda_ = peak / ((k - 1) / k)**(1 / k)
-
+    
     # Generate x values and Weibull PDF
     x = np.linspace(0, max_x, num_points)
     pdf = weibull_min.pdf(x, k, scale=lambda_)
@@ -175,10 +184,10 @@ def save_plot(filename,title, tvec, X, S, E):
     plt.savefig(filename)
     plt.close()
 
-def plot_scr(filename,tvec, ratio):
+def plot_scr(filename,tvec, ratio, scropt):
     ratio = ratio * 1e6 
     plt.plot(tvec, ratio, label="Substrate to cell ratio")
-    plt.axhline(y=config.OPT_SUB_CELL_RATIO*1e6)
+    plt.axhline(y=scropt*1e6)
     plt.grid(True)
     plt.xlabel("Time h")
     plt.ylabel("S/X")

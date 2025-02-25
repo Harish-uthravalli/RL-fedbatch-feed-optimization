@@ -26,16 +26,25 @@ class Reactor(gymnasium.Env):
         self.experiment_name = experiment_name
         self.experiment_number = config.EXPERIMENT_NUMBER
         
-        if self.eval_model == False:
+        if self.eval_model:
             
             if not os.path.exists(f"experiments/{self.experiment_name}"):
                 os.makedirs(f"experiments/{self.experiment_name}")
             # CSV File
             self.df = pd.DataFrame(columns=config.TRAINING_DATA_LOG_COLUMNS)
-            self.df.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", index=True)  
+            self.df.to_csv(f"experiments/{self.experiment_name}/eval_data.csv", index=True)
+
+        else:
+            
+            if not os.path.exists(f"experiments/{self.experiment_name}"):
+                os.makedirs(f"experiments/{self.experiment_name}")
+            # CSV File
+            self.df = pd.DataFrame(columns=config.TRAINING_DATA_LOG_COLUMNS)
+            self.df.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", index=True) 
+
+         
 
 
-    
 
     def seed(self, seed=None):
         """Sets the seed for the environment's random elements."""
@@ -215,7 +224,7 @@ class Reactor(gymnasium.Env):
                 MuE = 0
             # Get rate of enzyme production based on the substrate to cell ratio value
             else:
-                MuE = self.MuE_opt * utils.get_weibull_y_value(sub_cell_ratio, peak=self.scr_opt * 1e6)
+                MuE = self.mue_opt * utils.get_weibull_y_value(sub_cell_ratio, peak=self.scr_opt * 1e6)
                 # print("Optimum ratio = ",self.scr_opt)
                 # print("MuE_Max = ",self.mue_opt)
             
@@ -248,6 +257,11 @@ class Reactor(gymnasium.Env):
         self.prev_ea = self.current_ea
 
         if self.enzyme_change <= 0:
+            neg = -1
+        else: 
+            neg = 0
+
+        if self.enzyme_change <= 0:
             change_reward = -10
         else:
             change_reward = 10
@@ -257,12 +271,12 @@ class Reactor(gymnasium.Env):
         else:
             change_bonus = 0
         
-        self.enzyme_prev_change = self.enzyme_change
+        self.enzyme_prev_change = self.enzyme_change + neg
             
         
         
         #reward = self.e_cur_change + utils.reward_function(self.current_e_activ) + negative_reward
-        reward = change_reward + change_bonus
+        reward = utils.calculate_scaled_distance(self.current_ea, 3.5)
 
         # --------------- Write it in csv -----------------
         self.change[self.simulation_timestep] = self.enzyme_change
@@ -299,8 +313,11 @@ class Reactor(gymnasium.Env):
             self.experiment_number += 1
             df_info = pd.DataFrame(self.D)
             df_imp = df_info.head(self.simulation_timestep)
-            df_imp.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", mode='a',header=False, index=True)
-        
+            if self.eval_model:
+                df_imp.to_csv(f"experiments/{self.experiment_name}/eval_data.csv", mode='a',header=False, index=True)
+            else:
+                df_imp.to_csv(f"experiments/{self.experiment_name}/{config.TRAINING_DATA_LOGS_FILENAME}", mode='a',header=False, index=True)
+
         return (
             np.array([
             self.simulation_timestep, 

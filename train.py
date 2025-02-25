@@ -9,6 +9,9 @@ import shutil
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes, StopTrainingOnNoModelImprovement
 from earlystopping import EarlyStoppingCallback
 import torch
+from eval_callback_new import EpisodeBasedEvalCallback
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
+
 
 
 register(
@@ -60,25 +63,17 @@ elif model_name == "SAC":
         env, 
         tensorboard_log=logdir, 
         device='cuda'
-        # learning_rate = 2.0100866791609192e-05,
-        # buffer_size = 127415,
-        # learning_starts = 8942,
-        # batch_size= 512,
-        # tau = 0.0265783511470118,
-        # gamma=0.920548515347066,
-        # train_freq = 1,
-        # gradient_steps =  20,
-        # target_entropy = -0.7978268822546424,
-        # target_update_interval =16
         )
 
 stop_train_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=30, min_evals=10, verbose=1)
-                 
+evaluate_enz_callback = EpisodeBasedEvalCallback(eval_env, model_dir=models_dir, eval_interval=150, n_eval_episodes=50, patience=30, verbose=1)
+callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=10_000, verbose=1)
+
 # Evaluation Callback
 eval_callback = EvalCallback(
     eval_env, 
     best_model_save_path=models_dir,
-    n_eval_episodes=50,
+    n_eval_episodes=30,
     eval_freq=10_000,
     verbose=1,
     deterministic= False,
@@ -87,12 +82,13 @@ eval_callback = EvalCallback(
 
 # Training loop
 TIMESTEPS = 5e6
-#TIMESTEPS = 100_000
 EPOCHS = 1
 model_save_path = os.path.join(models_dir,f'{experiment_name}.zip')
 print(f"-------------------- Running Experiment: {experiment_name} -------------------- ")
 print(f"-------------------- TRAINING {model_name} --------------------")
 for i in range(1, EPOCHS + 1):
     print(f"Training {i}/{EPOCHS}")
-    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name, callback=eval_callback , progress_bar=True)
+    model.learn(total_timesteps=TIMESTEPS, reset_num_timesteps=False, tb_log_name=experiment_name, callback=[callback_max_episodes,eval_callback] , progress_bar=True)
     model.save(model_save_path)
+
+print("------------ Training Finished ! ------------")
