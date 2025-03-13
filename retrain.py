@@ -84,4 +84,4 @@ if __name__ == "__main__":
         (0.00555556, 0.06),
         (0.006, 0.06)
     ]  # List of (scr, mue_opt) values
-    run_experiment(0.006, 0.06)
+    run_experiment(0.006, 0.14)

@@ -77,7 +77,7 @@ eval_callback = EvalCallback(
     eval_freq=10_000,
     verbose=1,
     deterministic= False,
-    callback_after_eval= stop_train_callback
+    #callback_after_eval= stop_train_callback
 )
 
 # Training loop

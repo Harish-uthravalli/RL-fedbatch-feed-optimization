@@ -27,7 +27,7 @@ From https://static-content.springer.com/esm/art%3A10.1007%2Fs12257-020-0153-z/M
 
 TRAINING_DATA_LOGS_FILENAME = "training_data.csv"
 TRAINING_DATA_LOG_COLUMNS = ["timestep","experiment_number","biomass","substrate_in_tank","enzyme_activity","temperature","feeding_action","reward","change","distance","nochange","t4","t5","flow_volume"]
-EXPERIMENT_NAME = "sac_target3.5"
+EXPERIMENT_NAME = "ppo_c10+n-10_b100"
 
 # ---------------------------------- Reactor Parameters ------------------------------------------------
 
@@ -82,5 +82,5 @@ TEMP_CHANGE = 0.1
 
 # ------------------------------------- RL ALGO PARAMETERS ------------------------------------------------
 MODELS_PATH = "model"
-MODEL = "SAC"
+MODEL = "PPO"
 BEST_MODEL_NAME = "best_model.zip"

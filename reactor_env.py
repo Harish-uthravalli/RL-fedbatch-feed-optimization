@@ -255,7 +255,7 @@ class Reactor(gymnasium.Env):
         self.enzyme_change = (self.current_ea - self.prev_ea) * 10
         #print(f"previous enzyme change: {self.enzyme_prev_change} and current {self.enzyme_change}, change: {self.enzyme_change}")
         self.prev_ea = self.current_ea
-
+        #print(f"Current enzyme change {self.enzyme_change}") 
         if self.enzyme_change <= 0:
             neg = -1
         else: 
@@ -271,12 +271,15 @@ class Reactor(gymnasium.Env):
         else:
             change_bonus = 0
         
-        self.enzyme_prev_change = self.enzyme_change + neg
-            
+                #print(f"previous : {self.enzyme_prev_change}")
+
+        self.enzyme_prev_change = self.enzyme_change
         
         
         #reward = self.e_cur_change + utils.reward_function(self.current_e_activ) + negative_reward
-        reward = utils.calculate_scaled_distance(self.current_ea, 3.5)
+        reward =  change_reward + change_bonus
+
+        #print("reward = ",reward)
 
         # --------------- Write it in csv -----------------
         self.change[self.simulation_timestep] = self.enzyme_change

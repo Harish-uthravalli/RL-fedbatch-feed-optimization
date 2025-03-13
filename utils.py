@@ -77,7 +77,7 @@ def cell_growth_rate(S):
     if S < 0.002 or S > 0.030:
             rate = 0
     else:
-        rate = config.MU_MAX
+        rate = 0.2
     
     return rate
 
@@ -188,11 +188,9 @@ def plot_scr(filename,tvec, ratio, scropt):
     ratio = ratio * 1e6 
     plt.plot(tvec, ratio, label="Substrate to cell ratio")
     plt.axhline(y=scropt*1e6)
-    plt.grid(True)
     plt.xlabel("Time h")
     plt.ylabel("S/X")
-    plt.legend()
-
+    
     plt.savefig(filename)
     plt.close()
 
