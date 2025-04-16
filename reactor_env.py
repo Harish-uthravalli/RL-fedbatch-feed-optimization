@@ -330,5 +330,9 @@ class Reactor(gymnasium.Env):
             reward, 
             self.terminate, 
             False, 
-            {"enzyme_activity": self.enzyme_activity[self.simulation_timestep]}
+            {
+                "enzyme_activity": self.enzyme_activity[self.simulation_timestep],
+                "substrate": self.substrate[:self.simulation_timestep],
+                "cells" : self.biomass[:self.simulation_timestep]
+                }
         )

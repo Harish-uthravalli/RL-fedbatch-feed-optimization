@@ -18,7 +18,7 @@ register(
 )
 
 def run_experiment(scr, mue_opt):
-    experiment_name = f"sac_rt_scr-{scr}_mopt-{mue_opt}_test"
+    experiment_name = f"retraining_scr-{scr}_mopt-{mue_opt}"
     trained_model_name = 'sac_evalcb'
     trained_model_path = os.path.join('experiments', trained_model_name, 'model', 'best_model.zip')
     models_dir = f'experiments/{experiment_name}/model'
@@ -42,14 +42,14 @@ def run_experiment(scr, mue_opt):
     env_test.reset()
 
     # Load the pretrained model
-    model = SAC.load(trained_model_path, env=env, device='cuda')
+    model = SAC.load(trained_model_path, env=env, device='cuda:1')
     model.set_env(env)
 
     # Initialize callbacks
     episode_counts = []
     episode_counter = EpisodeCounterCallback(episode_list=episode_counts)
     stop_train_callback = StopTrainingOnNoModelImprovement(max_no_improvement_evals=30, min_evals=5, verbose=1)
-    enz_epi_eval_callback = EpisodeBasedEvalCallback(env_test, experiment_name, model_dir=models_dir, eval_interval=150, n_eval_episodes=50, patience=30, verbose=1)
+    enz_epi_eval_callback = EpisodeBasedEvalCallback(env_test, experiment_name, scr_opt= scr,model_dir=models_dir, eval_interval=150, n_eval_episodes=50, patience=30, verbose=1)
     eval_callback = EvalCallback(env_test, best_model_save_path=models_dir, n_eval_episodes=50, eval_freq=10_000, verbose=0, deterministic=False, callback_after_eval=stop_train_callback)
     earlystopping_callback = EarlyStoppingCallback(patience=10000)
 
@@ -74,41 +74,30 @@ def run_experiment(scr, mue_opt):
 if __name__ == "__main__":
     
     scrs = np.array([0.002, 0.00244444, 0.00288889, 0.00333333, 0.00377778,
-                 0.00422222, 0.00466667, 0.00511111, 0.00555556, 0.006])
+                    0.00422222, 0.00466667, 0.00511111, 0.00555556, 0.006])
 
-    mueopts = np.array([0.06, 0.06888889, 0.07777778, 0.08666667, 0.09555556,
-                    0.10444444, 0.11333333, 0.12222222, 0.13111111, 0.14])
+    mueopts = np.array([0.10444444, 0.11333333, 0.12222222, 0.13111111, 0.14])
+       #      ])
 
-    # Exclude mue_opt = 0.06
-    mueopts_filtered = mueopts[mueopts != 0.06]
 
     # Create the meshgrid
-    SCR_grid, MUE_grid = np.meshgrid(scrs, mueopts_filtered)
+    SCR_grid, MUE_grid = np.meshgrid(scrs, mueopts)
 
     # Flatten for easy iteration
     SCR_flat = SCR_grid.ravel()
     MUE_flat = MUE_grid.ravel()
 
-    # Print shapes
-    print("SCR_grid shape:", SCR_grid.shape)
-    print("MUE_grid shape:", MUE_grid.shape)
+    # Create a list to store processes
+    processes = []
 
-    # Print some values
-    print("First few combinations:")
+    # Create and start a new process for each configuration
     for i,j in zip(SCR_flat,MUE_flat):
-        print(f"scr_opt: {i}, mue_opt: {j}")
+        p = multiprocessing.Process(target=run_experiment, args=(i, j))
+        p.start()
+        processes.append(p)
 
-    # # Create a list to store processes
-    # processes = []
+    # Wait for all processes to finish
+    for p in processes:
+        p.join()
 
-    # # Create and start a new process for each configuration
-    # for scr, mue_opt in experiment_configs:
-    #     p = multiprocessing.Process(target=run_experiment, args=(scr, mue_opt))
-    #     p.start()
-    #     processes.append(p)
-
-    # # Wait for all processes to finish
-    # for p in processes:
-    #     p.join()
-
-    # print("All experiments completed!")
+    print("All experiments completed!")
