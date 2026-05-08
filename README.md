@@ -4,5 +4,7 @@ python train.py
 # RUN RETRAINING 
 python retrain.py
 
-# Config contains all the parameter values
+Config contains all the parameter values. 
+
+Yet to finish docs.. 
 
